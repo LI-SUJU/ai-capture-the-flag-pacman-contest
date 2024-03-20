@@ -5,7 +5,7 @@
 		food1 food2 food3 food4 food5 food6 food7 food8 food9 food10 food11 food12 food13 food14 food15 food16 food17 food18 food19 food20 - foods
 	)
 	(:init 
-		(at-pacman cell13_7)
+		(at-pacman cell12_6)
 		(at-food food1 cell26_1)
 		(at-food food2 cell26_14)
 		(at-food food3 cell21_6)
@@ -17,8 +17,8 @@
 		(at-food food10 cell23_1)
 		(at-food food11 cell24_12)
 		(at-food food12 cell28_7)
-		(has-ghost cell17_8)
-		(has-ghost cell24_6)
+		(has-ghost cell25_6)
+		(has-ghost cell25_5)
 		(has-capsule cell25_10)
 		(connected cell1_1 cell1_2)
 		(connected cell1_2 cell1_3)

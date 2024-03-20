@@ -5,7 +5,8 @@
 		invader1 invader2 - invaders
 	)
 	(:init 
-		(at-ghost cell2_14)
+		(at-ghost cell4_7)
+		(at-invader invader1 cell14_14)
 		(connected cell1_1 cell1_2)
 		(connected cell1_2 cell1_3)
 		(connected cell1_2 cell1_1)
@@ -552,15 +553,7 @@
 		(connected cell30_14 cell30_13)
 	)
 	(:goal (and
-		(or
-			(at-ghost cell15_1)
-			(at-ghost cell15_2)
-			(at-ghost cell15_4)
-			(at-ghost cell15_7)
-			(at-ghost cell15_8)
-			(at-ghost cell15_11)
-			(at-ghost cell15_13)
-			(at-ghost cell15_14)
-		)
+		(not (at-invader invader1 cell14_14))
+		(at-ghost cell3_8)
 	))
 )
