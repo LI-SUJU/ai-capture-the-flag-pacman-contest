@@ -43,7 +43,7 @@ class MCTSNode(object):
         self.child = []
         self.visits = 1
         self.q_value = 0.0
-        self.epsilon = 1
+        self.epsilon = 0.8
         self.rewards = 0
         self.legalActions = [act for act in gameState.getLegalActions(agent.index) if act != 'Stop']
         self.unexploredActions = self.legalActions[:]
