@@ -114,7 +114,7 @@ class MCTSNode(object):
         return best_child
     
     '''Game related functions'''
-
+    '''for this game, it is not feasible to get the reward after reaching the terminal state, so we need to calculate the reward by features'''
     def cal_reward(self):
         current_pos = self.gameState.getAgentPosition(self.agent.index)
         if current_pos == self.gameState.getInitialAgentPosition(self.agent.index):
@@ -343,40 +343,6 @@ class DefensiveAgent(OffensiveAgent):
     could be like.  It is not the best or only way to make
     such an agent.
     """
-
-    def get_off_features(self, gameState, action):
-        """
-        Returns a counter of features for the state
-        """
-        features = util.Counter()
-        next_tate = self.get_next_state(gameState, action)
-        if next_tate.getAgentState(self.index).numCarrying > gameState.getAgentState(self.index).numCarrying:
-            features['getFood'] = 1
-        else:
-            if len(self.getFood(next_tate).asList()) > 0:
-                features['minDistToFood'] = self.get_min_dist_to_food(next_tate)
-        # Computes distance to invaders we can see
-        next_state = self.get_next_state(gameState, action)
-        my_state = next_state.getAgentState(self.index)
-        my_pos = my_state.getPosition()
-        enemies = [next_state.getAgentState(i) for i in self.getOpponents(next_state)]
-        invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
-        features['numInvaders'] = len(invaders)
-        if len(invaders) > 0:
-            dists = [self.getMazeDistance(my_pos, a.getPosition()) for a in invaders]
-            features['invaderDistance'] = min(dists)
-
-        if action == Directions.STOP: features['stop'] = 1
-        rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
-        if action == rev: features['reverse'] = 1
-        return features
-
-    def get_off_weights(self, gameState, action):
-        """
-        Normally, weights do not depend on the gamestate.  They can be either
-        a counter or a dictionary.
-        """
-        return {'minDistToFood': -1, 'getFood': 100, 'numInvaders': -1000, 'invaderDistance': -1000, 'stop': -100, 'reverse': -2}
 
     def get_def_features(self, gameState, action):
         features = util.Counter()
