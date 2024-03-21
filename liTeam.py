@@ -11,11 +11,6 @@
 # Student side autograding was added by Brad Miller, Nick Hay, and
 # Pieter Abbeel (pabbeel@cs.berkeley.edu).
 
-# -----------------------------------------------------------------------------
-# Written by: Ruilin Ma, 2023
-# Version: 1.0
-# Date: 2023/05/22
-
 from captureAgents import CaptureAgent
 import random, time, util
 from game import Directions, Actions
@@ -37,35 +32,31 @@ def createTeam(firstIndex, secondIndex, isRed,
     return [eval(first)(firstIndex), eval(second)(secondIndex)]
 
 
-max_depth = 100
+MAX_DEPTH = 20
 
-
-#####################
-# Structure for UCT #
-#####################
 class MCTSNode(object):
 
     def __init__(self, gameState, agent, action, parent, enemy_pos, borderline):
+        '''MCTS node properties initialization'''
         self.parent = parent
-        self.action = action
         self.depth = parent.depth + 1 if parent else 0
-
         self.child = []
         self.visits = 1
         self.q_value = 0.0
-
-        self.gameState = gameState.deepCopy()
-        self.enemy_pos = enemy_pos
-        self.legalActions = [act for act in gameState.getLegalActions(agent.index) if act != 'Stop']
-        self.unexploredActions = self.legalActions[:]
-        self.borderline = borderline
-
-        self.agent = agent
         self.epsilon = 1
         self.rewards = 0
-
-    def node_expanded(self):
-        if self.depth >= max_depth:
+        self.legalActions = [act for act in gameState.getLegalActions(agent.index) if act != 'Stop']
+        self.unexploredActions = self.legalActions[:]
+        self.action = action
+        '''Game properties initialization'''
+        self.gameState = gameState.deepCopy()
+        self.enemy_pos = enemy_pos
+        self.borderline = borderline
+        self.agent = agent
+    
+    '''MCTS implementation'''
+    def expansion(self):
+        if self.depth >= MAX_DEPTH:
             return self
 
         if self.unexploredActions != []:
@@ -77,59 +68,73 @@ class MCTSNode(object):
             return child_node
 
         if util.flipCoin(self.epsilon):
-            next_best_node = self.sel_best_child()
+            next_best_node = self.sel_child_with_highest_UBC1()
         else:
             next_best_node = random.choice(self.child)
-        return next_best_node.node_expanded()
+        return next_best_node.expansion()
 
-    def mcts_search(self):
+    def simulation(self):
         timeLimit = 0.99
         start = time.time()
         while (time.time() - start < timeLimit):
 
-            node_selected = self.node_expanded()
+            node_selected = self.expansion()
 
             reward = node_selected.cal_reward()
 
             node_selected.backpropagation(reward)
 
-        return self.sel_best_child().action
-
-    def sel_best_child(self):
-        best_score = -np.inf
-        best_child = None
-        for candidate in self.child:
-            score = candidate.q_value / candidate.visits
-            if score > best_score:
-                best_score = score
-                best_child = candidate
-        return best_child
-
+        return self.sel_child_with_highest_UBC1().action
+    
+    
     def backpropagation(self, reward):
         self.visits += 1
         self.q_value += reward
         if self.parent is not None:
             self.parent.backpropagation(reward)
 
+    def findANodeInTree(self, gameState):
+        if self.gameState == gameState:
+            return self
+        for child in self.child:
+            found = child.findANodeInTree(gameState)
+            if found:
+                return found
+        return None
+    
+    def sel_child_with_highest_UBC1(self):
+        best_score = -np.inf
+        best_child = None
+        for candidate in self.child:
+            # UBC1 value
+            score = candidate.q_value / candidate.visits + 2 * math.sqrt((2*math.log(self.visits)) / candidate.visits)
+            if score > best_score:
+                best_score = score
+                best_child = candidate
+        return best_child
+    
+    '''Game related functions'''
+
     def cal_reward(self):
         current_pos = self.gameState.getAgentPosition(self.agent.index)
         if current_pos == self.gameState.getInitialAgentPosition(self.agent.index):
             return -1000
-        value = self.get_feature() * MCTSNode.get_weight_backup(self)
+        value = self.get_features() * MCTSNode.get_weight(self)
         return value
 
-    def get_feature(self):
+    def get_features(self):
         gameState = self.gameState
-        feature = util.Counter()
+        features = util.Counter()
         current_pos = self.gameState.getAgentPosition(self.agent.index)
-        feature['distance'] = min([self.agent.getMazeDistance(current_pos, borderPos) for borderPos in self.borderline])
-        return feature
+        features['getFood']=len(self.agent.getFood(gameState).asList())
+        features['capsule']=len(self.agent.getCapsules(gameState))
+        features['enemy']=len(self.enemy_pos)
+        features['minDistToFood'] = self.agent.get_min_dist_to_food(gameState)
+        features['distanceToHomeAndFood'] = self.agent.getMazeDistance(current_pos, gameState.getInitialAgentPosition(self.agent.index))*(50-features['getFood'])
+        return features
 
     def get_weight(self):
-        return {'minDistToFood': -10, 'getFood': 100}
-
-    def get_weight_backup(self):
-        return {'distance': -1}
+        return {'minDistToFood': -10, 'getFood': 100, 'capsule': 100, 'enemy': -100, 'distanceToHomeAndFood': -1}
 
 # --------------------------------------------------------------------------
 
@@ -147,6 +152,7 @@ class OffensiveAgent(CaptureAgent):
         self.arena_height = gameState.data.layout.height
         self.friendly_borders = self.detect_my_border(gameState)
         self.hostile_borders = self.detect_enemy_border(gameState)
+        # self.MCTSNode = MCTSNode(gameState, self, None, None, self.detect_enemy_ghost(gameState), self.friendly_borders)
 
     def detect_my_border(self, gameState):
         """
@@ -232,10 +238,20 @@ class OffensiveAgent(CaptureAgent):
 
             elif len(foodList) < 2 or carrying > 7:
                 rootNode = MCTSNode(gameState, self, None, None, appr_ghost_pos, self.friendly_borders)
-                action_chosen = MCTSNode.mcts_search(rootNode)
+                action_chosen = MCTSNode.simulation(rootNode)
+                # # find the node in the tree
+                # node= self.MCTSNode.findANodeInTree(gameState)
+                # if node:
+                #     action_chosen = MCTSNode.simulation(node)
+                # else:
+                #     rootNode = MCTSNode(gameState, self, None, None, appr_ghost_pos, self.friendly_borders)
+                #     action_chosen = MCTSNode.simulation(rootNode)
+                #     # get the possible parent of rootNode
+                #     # get the next game state
+                #     next_game_state = gameState.generateSuccessor(self.index, action_chosen)
             else:
                 rootNode = MCTSNode(gameState, self, None, None, appr_ghost_pos, self.friendly_borders)
-                action_chosen = MCTSNode.mcts_search(rootNode)
+                action_chosen = MCTSNode.simulation(rootNode)
 
         else:
             ghosts = self.detect_enemy_ghost(gameState)
