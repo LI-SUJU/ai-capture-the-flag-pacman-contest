@@ -172,10 +172,6 @@ class FoodOffenseWithAgentAwareness():
         # TODO: it looks like gameState does not know the behaviour of when to end the game
         # - gameState.data.timeleft records the total number of turns left in the game (each time a player nodes turn decreases, so should decriment by 4)
         # - capture.CaptureRule.process handles actually ending the game, using 'game' and 'gameState' object
-        # As these rules are not capture (enforced) within out gameState object, we need capture it outselves
-        # - Option 1: track time left explictly
-        # - Option 2: when updating the gameState, add additional information that generateSuccesor doesn't collect
-        #           e.g set gameState.data._win to true. If goal then check gameState.isOver() is not true
         gameState = state[0]
 
         actions: t.List[Directions] = gameState.getLegalActions(
@@ -189,6 +185,7 @@ class FoodOffenseWithAgentAwareness():
         # if planning close to agent, include expected ghost activity
         current_depth_of_search = len(node_info["action_from_init"])
         # we are only concerned about being eaten when we are pacman
+        # only care about the enemy positon when distance is shorter than DEPTH_CUTOFF
         if current_depth_of_search <= self.DEPTH_CUTOFF and gameState.getAgentState(self.captureAgent.index).isPacman:
             self.expanded += 1  # track number of states expanded
 
@@ -205,8 +202,9 @@ class FoodOffenseWithAgentAwareness():
                 distancer = self.captureAgent.distancer
                 my_pos = next_game_state.getAgentState(
                     current_agent_index).getPosition()
+                # TODO: controls parameter
                 adjacent_enemy_indexs = list(filter(lambda x: distancer.getDistance(
-                    my_pos, next_game_state.getAgentState(x).getPosition()) <= 1, close_enemy_indexes))
+                    my_pos, next_game_state.getAgentState(x).getPosition()) <= 2, close_enemy_indexes))
 
                 # check in enemies are in the right state
                 adjacent_ghost_indexs = list(filter(lambda x: (not next_game_state.getAgentState(
@@ -255,6 +253,8 @@ def offensiveHeuristic(state, problem=None):
     captureAgent = problem.captureAgent
     index = captureAgent.index
     gameState = state[0]
+    if getCapsule(captureAgent, gameState)[0] is not None:
+        capsuleLocation = getCapsule(captureAgent, gameState)[0]
 
     # check if we have reached a goal state and explicitly return 0
     if captureAgent.red == True:
@@ -290,6 +290,13 @@ def offensiveHeuristic(state, problem=None):
                 min_pos = food
                 min_dist = dist
 
+        # compare to capsule location
+        if capsuleLocation is not None:
+            distcap = distancer.getDistance(myPos, capsuleLocation)
+            if distcap <= min_dist:
+                dist_to_cap = distcap
+                return dist_to_cap
+        
         dist_to_food = min_dist
         return_home_from = min_pos
         return dist_to_food
@@ -324,6 +331,17 @@ def getFood(agent, gameState):
         return gameState.getBlueFood()
     else:
         return gameState.getRedFood()
+    
+# new strategy if agent is close to  a capsule
+def getCapsule(agent, gameState):
+    if agent.red:
+        redCapsuleL =  gameState.getRedCapsules()
+        # print(redCapsuleL, type(redCapsuleL))
+        return redCapsuleL
+    else:
+        blueCapsuleL = gameState.getBlueCapsules()
+        return blueCapsuleL
+        print(blueCapsuleL, type(blueCapsuleL))
 
 
 ################# Defensive problems and heuristics  ####################
@@ -463,16 +481,16 @@ class defendTerritoryProblem():
         return positionsSorted
 
     # deprecated
-    def getProbableEnemyEntryPoint(self):
-        positionsSorted = util.PriorityQueue()
-        positionsSorted = self.closestPosition(
-            self.intialPosition, self.possibleEnemyEntryPositions)
+    # def getProbableEnemyEntryPoint(self):
+    #     positionsSorted = util.PriorityQueue()
+    #     positionsSorted = self.closestPosition(
+    #         self.intialPosition, self.possibleEnemyEntryPositions)
 
-        while not(positionsSorted.isEmpty()):
-            possibleEntry = positionsSorted.pop()
-            if self.captureAgent.distancer.getDistanceOnGrid(self.intialPosition, possibleEntry) > 5:
-                return possibleEntry
-        return random.choice(self.possibleEnemyEntryPositions)
+    #     while not(positionsSorted.isEmpty()):
+    #         possibleEntry = positionsSorted.pop()
+    #         if self.captureAgent.distancer.getDistanceOnGrid(self.intialPosition, possibleEntry) > 5:
+    #             return possibleEntry
+    #     return random.choice(self.possibleEnemyEntryPositions)
     
     # find the position where the enemy most likely to entry
     def getProbableEnemyEntryPointBasedOnFood(self):
@@ -483,7 +501,8 @@ class defendTerritoryProblem():
 
         while not(positionsSorted.isEmpty()):
             possibleEntry = positionsSorted.pop()
-            if self.captureAgent.distancer.getDistanceOnGrid(self.intialPosition, possibleEntry) > 5:
+            # getDistanceOnGrid(self.intialPosition, possibleEntry) is used for enhanced patrol
+            if self.captureAgent.distancer.getDistanceOnGrid(self.intialPosition, possibleEntry) > 2:
                 closestFoodPosition = self.closestPosition(
                     possibleEntry, self.myPreciousFood.asList()).pop()
                 distancetoToClosestFoodFromPosition = self.captureAgent.getMazeDistance(
