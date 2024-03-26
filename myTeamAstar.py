@@ -68,7 +68,15 @@ class agentBase(CaptureAgent):
         return random.choice(actions)
 
 
+stepListRecord = []
 class offensiveAgent(agentBase):
+    # def __init__(self, index, timeForComputing=.1):
+    #     super().__init__(index, timeForComputing)
+    #     self.stepsSinceLastScore = 0  # 跟踪步骤数的属性
+
+    # def registerInitialState(self, gameState: GameState) -> None:
+    #     super().registerInitialState(gameState)
+    #     self.stepsSinceLastScore = 0  # 重置步骤计数
 
     def chooseAction(self, gameState: GameState) -> Directions:
         # steps:
@@ -94,6 +102,11 @@ class offensiveAgent(agentBase):
             actions = [random.choice(gameState.getLegalActions(self.index))]
 
         return actions[0]
+    
+    def final(self, state):
+        global stepListRecord
+        # TODO calculate average steps  ....
+        # print("Total scores steps: ", stepListRecord)
 
 
 #################  problems and heuristics  ####################
@@ -229,6 +242,7 @@ class FoodOffenseWithAgentAwareness():
 
                 # make the update
                 next_game_states[i] = next_game_state
+                next_game_state.data.scoreChange
                 # if they are next to pacman, move ghost to pacman possiton
 
         successors = [((uniform_agent_direction(next_game_state),), action, 1)
@@ -253,8 +267,8 @@ def offensiveHeuristic(state, problem=None):
     captureAgent = problem.captureAgent
     index = captureAgent.index
     gameState = state[0]
-    if getCapsule(captureAgent, gameState)[0] is not None:
-        capsuleLocation = getCapsule(captureAgent, gameState)[0]
+    # if getCapsule(captureAgent, gameState)[0] is not None:
+    #     capsuleLocation = getCapsule(captureAgent, gameState)[0]
 
     # check if we have reached a goal state and explicitly return 0
     if captureAgent.red == True:
@@ -291,12 +305,12 @@ def offensiveHeuristic(state, problem=None):
                 min_dist = dist
 
         # compare to capsule location
-        if capsuleLocation is not None:
-            distcap = distancer.getDistance(myPos, capsuleLocation)
-            if distcap <= min_dist:
-                dist_to_cap = distcap
-                return dist_to_cap
-        
+        # if capsuleLocation is not None:
+        #     distcap = distancer.getDistance(myPos, capsuleLocation)
+        #     if distcap <= min_dist:
+        #         dist_to_cap = distcap
+        #         return dist_to_cap
+
         dist_to_food = min_dist
         return_home_from = min_pos
         return dist_to_food
@@ -333,15 +347,13 @@ def getFood(agent, gameState):
         return gameState.getRedFood()
     
 # new strategy if agent is close to  a capsule
-def getCapsule(agent, gameState):
-    if agent.red:
-        redCapsuleL =  gameState.getRedCapsules()
-        # print(redCapsuleL, type(redCapsuleL))
-        return redCapsuleL
-    else:
-        blueCapsuleL = gameState.getBlueCapsules()
-        return blueCapsuleL
-        print(blueCapsuleL, type(blueCapsuleL))
+# def getCapsule(agent, gameState):
+#     if agent.red:
+#         redCapsuleL =  gameState.getRedCapsules()
+#         return redCapsuleL
+#     else:
+#         blueCapsuleL = gameState.getBlueCapsules()
+#         return blueCapsuleL
 
 
 ################# Defensive problems and heuristics  ####################
@@ -480,19 +492,6 @@ class defendTerritoryProblem():
                 toPos, self.captureAgent.getMazeDistance(toPos, fromPos))
         return positionsSorted
 
-    # deprecated
-    # def getProbableEnemyEntryPoint(self):
-    #     positionsSorted = util.PriorityQueue()
-    #     positionsSorted = self.closestPosition(
-    #         self.intialPosition, self.possibleEnemyEntryPositions)
-
-    #     while not(positionsSorted.isEmpty()):
-    #         possibleEntry = positionsSorted.pop()
-    #         if self.captureAgent.distancer.getDistanceOnGrid(self.intialPosition, possibleEntry) > 5:
-    #             return possibleEntry
-    #     return random.choice(self.possibleEnemyEntryPositions)
-    
-    # find the position where the enemy most likely to entry
     def getProbableEnemyEntryPointBasedOnFood(self):
         positionsSorted = util.PriorityQueue()
         bestEnemyPosition = util.PriorityQueue()
@@ -647,8 +646,9 @@ class SolutionNotFound(Exception):
 
 
 class Node():
-    def __init__(self, *, name):
+    def __init__(self, *, name, steps_from_start=0):
         self.name = name
+        self.steps_from_start = steps_from_start
 
     def add_info(self, **kwargs):
         for key, value in kwargs.items():
@@ -661,6 +661,7 @@ def nullHeuristic(state, problem=None):
 
 
 def aStarSearch(problem, heuristic=nullHeuristic):
+    global stepListRecord
     node = Node(name="n0").add_info(state=problem.getStartState())
     h_n = heuristic(node.state, problem=problem)
     g_n = 0  # accumulated cost so far
@@ -685,8 +686,8 @@ def aStarSearch(problem, heuristic=nullHeuristic):
             # very useful debugging info - will be left for future users
             # total_expanded += 1
             # print("------------")
-            # print(node.state[0])
-            # print(node.action_from_init)
+            # # print(node.state[0])
+            # print(len(node.action_from_init))
             # print(f"f_n {node.f_n}")
             # print(f"g_n {node.g_n}")
             # print(f"Nodes expanded {total_expanded}")
@@ -699,6 +700,8 @@ def aStarSearch(problem, heuristic=nullHeuristic):
             close.add(node.state)
             best_g[node.state] = node.g_n
             if problem.isGoalState(node.state):
+                global stepListRecord
+                stepListRecord.append(len(node.action_from_init))
                 break
             else:
                 for related_node in problem.getSuccessors(node.state, node_info={"action_from_init": [*node.action_from_init]}):
@@ -706,18 +709,19 @@ def aStarSearch(problem, heuristic=nullHeuristic):
                     g_n = node.g_n + step_cost
                     h_n = heuristic(new_state, problem=problem)
                     if h_n < float('inf'):  # solution is possible
-                        new_node = Node(name=f"n{count}").add_info(
+                        new_node = Node(name=f"n{count}", steps_from_start=node.steps_from_start + 1).add_info(
                             state=new_state,
                             f_n=g_n + h_n,
                             g_n=g_n,
                             # important step to keep on track of the taken action
-                            action_from_init=[
-                                *node.action_from_init] + [action],
+                            action_from_init=[*node.action_from_init] + [action],
                         )
+                        # print(new_state[0].data.scoreChange)
+                        # if new_state[0].getScore() - node.state[0].getScore() >= 2:
+                        #     print(new_state[0].getScore(), node.state[0].getScore())
+                        #     print(f"Steps taken to score: {new_node.steps_from_start}")
                         # checking if goal here improves performance
                         # also protects agains bad heuristics that would send a goal to the end of the heap
-                        # this could be wrong cuz we dont check the new state:
-                        # if problem.isGoalState(new_node.state):
                         if problem.isGoalState(node.state):
                             node = new_node
                             break
