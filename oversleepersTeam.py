@@ -336,6 +336,8 @@ class OffensiveAgent(DummyAgent):
             return successor
     
     def chooseAction(self, gameState):
+
+        
         if self.MCTS_tree is None:
             self.MCTS_tree = MCTS(gameState, self, self.evaluate, None,  None)
         else:
@@ -397,11 +399,17 @@ class OffensiveAgent(DummyAgent):
             minDistance = min(dists)
             features['scaredEnemyDistance'] = minDistance
 
+        # compute the distance to the nearest capsule
+        capsules = self.getCapsules(successor)
+        if capsules:
+            capsule_distances = [self.getMazeDistance(myPos, capsule) for capsule in capsules]
+            nearest_capsule_distance = min(capsule_distances)
+            features['nearestCapsuleDistance'] = nearest_capsule_distance
         
         return features 
 
     def getWeights(self, gameState, action):
-        return {'onOffense': 1000, 'successorScore': 1000, 'distanceToFood': -50, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 100, 'distanceToHome': -10, 'enemyScaredTime': 1000, 'scaredEnemyDistance': -100, 'distanceToHomeCarryingTooMuch': -1000, 'numCarrying': 100}
+        return {'onOffense': 1000, 'successorScore': 1000, 'distanceToFood': -50, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 100, 'distanceToHome': -100, 'enemyScaredTime': 100, 'scaredEnemyDistance': -100, 'distanceToHomeCarryingTooMuch': -100, 'numCarrying': 10, 'nearestCapsuleDistance': -100}
     
     def evaluate (self, gameState, action):
         current_pos = gameState.getAgentPosition(self.index)
