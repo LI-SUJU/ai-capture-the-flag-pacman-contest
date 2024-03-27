@@ -116,7 +116,7 @@ class DummyAgent(CaptureAgent):
 EXPLORE_RATE = 1.2
 MAX_INTERATIONS = 10
 MAX_SIMULATE_STEPS = 0
-MAX_DEPTH = 15
+MAX_DEPTH = 1
 
 class MCTS:
     def __init__(self, gameState, agent, evaluateFun, action, current_node = None):
@@ -128,12 +128,14 @@ class MCTS:
         self.gameState = gameState.deepCopy()
         self.agent = agent
         self.index = agent.index
+        self.search_depth = 0
         
     def select(self, node):
         if self.is_fully_expanded(node) == False:
             self.fully_expand(node)
         best_child =self.select_best_child(node)
-        return self.expand(best_child)
+        
+        return best_child
     
     def is_fully_expanded(self, node):
         if len(node.children)==len(node.legalActions):
@@ -151,28 +153,33 @@ class MCTS:
         return node
     
     def select_best_child(self, node):
+        if self.search_depth >= MAX_DEPTH:
+            return node
+        
         total_visits = self.root.visit
-        best_child = None
+        best_child = node
         best_score = -np.inf
 
         for child in node.children:
             if child.visit == 0:
                 best_child = child
-                break
+                return best_child
 
             score = child.compute_UCB(total_visits)
             if score > best_score:
                 best_score = score
                 best_child = child
-                
-        return best_child
+            
+            self.expand(best_child)
+            
+        self.search_depth += 1
+        return self.select_best_child(best_child)
 
     def expand(self, node):
         """
         Expand the given node by one of its unexplored actions.
         Return the newly expanded child node.
         """
-        
         if node.unexploredActions != []:
             current_game_state = node.gameState.deepCopy()
             legal_actions = current_game_state.getLegalActions(self.agent.index)
@@ -192,6 +199,7 @@ class MCTS:
                 return None
         elif len(node.children) == 0:
             node.update_legal_actions()
+            self.expand(node)
         else:
             return node
 
@@ -243,7 +251,8 @@ class MCTS:
                 reward = self.simulate(child)
                 self.backpropagation(child, reward)
             count += 1
-        
+            self.search_depth = 0
+
         # TODO choose the method of choose action, max visit or max value
         if len(self.root.children) > 0:
             return self.select_action_by_visit()
@@ -336,22 +345,45 @@ class OffensiveAgent(DummyAgent):
     def getFeatures(self, gameState, action):
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
-        foodList = self.getFood(successor).asList()    
-        features['successorScore'] = -len(foodList)#self.getScore(successor)
 
-        # Compute distance to the nearest food
+        myState = successor.getAgentState(self.index)
+        myPos = myState.getPosition()
+
+        # Computes whether we're on defense (1) or offense (0)
+        features['onOffense'] = 0
+        if myState.isPacman: features['onOffense'] = 1
+
+        # Computes distance to invaders we can see
+        enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
+        defenders = [a for a in enemies if not a.isPacman and a.getPosition() != None]
+        if len(defenders) > 0:
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in defenders]
+            minDistance = min(dists)
+            # keep a distance from defenders
+            if(minDistance < 10) and all(enemy.scaredTimer == 0 for enemy in defenders):    
+                features['invaderDistance'] = minDistance
+
+        if action == Directions.STOP: features['stop'] = 1
+        rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
+        if action == rev: features['reverse'] = 1
         
         current_pos = gameState.getAgentPosition(self.index)
         features['distance'] = min([self.getMazeDistance(current_pos, borderPos) for borderPos in self.center_line])
-
+        
+        foodList = self.getFood(successor).asList() 
         if len(foodList) > 0: # This should always be True,  but better safe than sorry
             myPos = successor.getAgentState(self.index).getPosition()
             minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
             features['distanceToFood'] = minDistance
-        return features
+    
+        successor = self.getSuccessor(gameState, action)
+        foodList = self.getFood(successor).asList()    
+        features['successorScore'] = -len(foodList)#self.getScore(successor)
+        
+        return features 
 
     def getWeights(self, gameState, action):
-        return {'successorScore': 100, 'distanceToFood': -10, 'distance': -10}
+        return {'onOffense': 1000, 'successorScore': 1000, 'distanceToFood': -50, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 100}
     
     def evaluate (self, gameState, action):
         current_pos = gameState.getAgentPosition(self.index)
@@ -407,7 +439,6 @@ class DefensiveAgent(DummyAgent):
         return features * weights
 
     def getFeatures(self, gameState, action):
-        # baseline
         features = util.Counter()
         successor = self.getSuccessor(gameState, action)
 
@@ -422,7 +453,7 @@ class DefensiveAgent(DummyAgent):
         enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
         invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
         features['numInvaders'] = len(invaders)
-        if len(invaders) > 0:
+        if len(invaders) > 0 and all(enemy.scaredTimer == 0 for enemy in invaders):
             dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
             features['invaderDistance'] = min(dists)
 
@@ -445,5 +476,5 @@ class DefensiveAgent(DummyAgent):
 
     def getWeights(self, gameState, action):
         # TODO adjust reward policy
-        return {'numInvaders': -1000, 'onDefense': 1000, 'invaderDistance': -50, 'stop': -100, 'reverse': -2, 'distance': -10, 'foodDefendingScore': 100, 'distanceToFood': -1}
+        return {'numInvaders': -1000, 'onDefense': 1000, 'invaderDistance': -50, 'stop': -100, 'reverse': -2, 'distance': -2, 'foodDefendingScore': 10, 'distanceToFood': -1}
   
