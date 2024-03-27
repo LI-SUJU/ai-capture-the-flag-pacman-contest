@@ -381,12 +381,20 @@ class OffensiveAgent(DummyAgent):
         successor = self.getSuccessor(gameState, action)
         foodList = self.getFood(successor).asList()    
         features['successorScore'] = -len(foodList)#self.getScore(successor)
+        invaders = [a for a in enemies if a.isPacman and a.getPosition() != None]
         features['enemyScaredTime'] = sum([enemy.scaredTimer for enemy in invaders])
+        # get closed to scared enemy
+        if len(invaders) > 0 and any(enemy.scaredTimer > 0 for enemy in invaders):
+            # compute the distance to the scared enemy
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+            minDistance = min(dists)
+            features['scaredEnemyDistance'] = minDistance
+
         
         return features 
 
     def getWeights(self, gameState, action):
-        return {'onOffense': 1000, 'successorScore': 1000, 'distanceToFood': -50, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 10, 'distanceToHome': -10, 'enemyScaredTime': 1000}
+        return {'onOffense': 1000, 'successorScore': 1000, 'distanceToFood': -50, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 10, 'distanceToHome': -10, 'enemyScaredTime': 1000, 'scaredEnemyDistance': -100}
     
     def evaluate (self, gameState, action):
         current_pos = gameState.getAgentPosition(self.index)
@@ -476,10 +484,16 @@ class DefensiveAgent(DummyAgent):
             myPos = successor.getAgentState(self.index).getPosition()
             minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
             features['distanceToFood'] = minDistance
+        # get closed to scared enemy
+        if len(invaders) > 0 and any(enemy.scaredTimer > 0 for enemy in invaders):
+            # compute the distance to the scared enemy
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+            minDistance = min(dists)
+            features['scaredEnemyDistance'] = minDistance
         
         return features 
 
     def getWeights(self, gameState, action):
         # TODO adjust reward policy
-        return {'numInvaders': -1000, 'onDefense': 1000, 'invaderDistance': -50, 'stop': -100, 'reverse': -2, 'distance': -2, 'foodDefendingScore': 10, 'distanceToFood': -1, 'enemyScaredTime': 1000}
+        return {'numInvaders': -1000, 'onDefense': 1000, 'invaderDistance': -50, 'stop': -100, 'reverse': -2, 'distance': -2, 'foodDefendingScore': 10, 'distanceToFood': -1, 'enemyScaredTime': 1000, 'scaredEnemyDistance': -100}
   
