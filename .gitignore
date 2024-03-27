@@ -1,0 +1,5 @@
+# 忽略_pycahce_文件夹
+__pycache__
+
+# 忽略VSCode相关文件
+.vscode/

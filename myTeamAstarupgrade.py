@@ -148,7 +148,7 @@ class FoodOffenseWithAgentAwareness():
 
     def getStartState(self):
         # This needs to return the state information to being with
-        return (self.startingGameState, self.startingGameState.getScore())
+        return (self.startingGameState, self.startingGameState.getScore(), True)
 
     def isGoalState(self, state: t.Tuple[GameState]) -> bool:
         # Goal state when:
@@ -174,81 +174,51 @@ class FoodOffenseWithAgentAwareness():
             else:
                 False
 
-    def getSuccessors(self, state: t.Tuple[GameState], node_info: t.Optional[dict] = None) -> t.List[t.Tuple[t.Tuple[GameState], Directions, int]]:
-        """
-        Your getSuccessors function for the CapsuleSearchProblem goes here.
-        Args:
-          state: a tuple combineing all the state information required
-        Return:
-          the states accessable by expanding the state provide
-        """
-        # TODO: it looks like gameState does not know the behaviour of when to end the game
-        # - gameState.data.timeleft records the total number of turns left in the game (each time a player nodes turn decreases, so should decriment by 4)
-        # - capture.CaptureRule.process handles actually ending the game, using 'game' and 'gameState' object
+    def getSuccessors(self, state: t.Tuple[GameState], node_info: t.Optional[dict] = None) -> t.List[t.Tuple[t.Tuple[GameState, bool], Directions, int]]:
         gameState = state[0]
 
-        actions: t.List[Directions] = gameState.getLegalActions(
-            self.captureAgent.index)
-        # not interested in exploring the stop action as the state will be the same as out current one.
+        actions = gameState.getLegalActions(self.captureAgent.index)
         if Directions.STOP in actions:
             actions.remove(Directions.STOP)
-        next_game_states = [gameState.generateSuccessor(
-            self.captureAgent.index, action) for action in actions]
+        next_game_states = [gameState.generateSuccessor(self.captureAgent.index, action) for action in actions]
 
-        # if planning close to agent, include expected ghost activity
-        current_depth_of_search = len(node_info["action_from_init"])
-        # we are only concerned about being eaten when we are pacman
-        # only care about the enemy positon when distance is shorter than DEPTH_CUTOFF
-        if current_depth_of_search <= self.DEPTH_CUTOFF and gameState.getAgentState(self.captureAgent.index).isPacman:
-            self.expanded += 1  # track number of states expanded
+        successors = []
+        for action, next_game_state in zip(actions, next_game_states):
+            isSafe = True  # 初始化为True，假设状态是安全的
 
-            # make any nearby enemy ghosts take a step toward you if legal
-            for i, next_game_state in enumerate(next_game_states):
-                # get enemys
+            current_depth_of_search = len(node_info["action_from_init"])
+            if current_depth_of_search <= self.DEPTH_CUTOFF and gameState.getAgentState(self.captureAgent.index).isPacman:
+                self.expanded += 1
+
                 current_agent_index = self.captureAgent.index
-                enemy_indexes = next_game_state.getBlueTeamIndices() if next_game_state.isOnRedTeam(
-                    current_agent_index) else next_game_state.getRedTeamIndices()
+                enemy_indexes = next_game_state.getBlueTeamIndices() if next_game_state.isOnRedTeam(current_agent_index) else next_game_state.getRedTeamIndices()
 
-                # keep only enemies that are close enough to catch pacman.
-                close_enemy_indexes = [
-                    enemy_index for enemy_index in enemy_indexes if next_game_state.getAgentPosition(enemy_index) is not None]
+                close_enemy_indexes = [enemy_index for enemy_index in enemy_indexes if next_game_state.getAgentPosition(enemy_index) is not None]
                 distancer = self.captureAgent.distancer
-                my_pos = next_game_state.getAgentState(
-                    current_agent_index).getPosition()
-                # important the distance should be set to 1 because we only simulate one more action 
-                adjacent_enemy_indexs = list(filter(lambda x: distancer.getDistance(
-                    my_pos, next_game_state.getAgentState(x).getPosition()) <= 1, close_enemy_indexes))
+                my_pos = next_game_state.getAgentState(current_agent_index).getPosition()
+                adjacent_enemy_indexs = list(filter(lambda x: distancer.getDistance(my_pos, next_game_state.getAgentState(x).getPosition()) <= 1, close_enemy_indexes))
 
-                # check in enemies are in the right state
-                adjacent_ghost_indexs = list(filter(lambda x: (not next_game_state.getAgentState(
-                    x).isPacman) and (next_game_state.getAgentState(x).scaredTimer <= 0), adjacent_enemy_indexs))
+                adjacent_ghost_indexs = list(filter(lambda x: (not next_game_state.getAgentState(x).isPacman) and (next_game_state.getAgentState(x).scaredTimer <= 0), adjacent_enemy_indexs))
 
-                # move enemies to the pacman position
                 ghost_kill_directions = []
                 for index in adjacent_ghost_indexs:
-                    position = next_game_state.getAgentState(
-                        index).getPosition()
+                    position = next_game_state.getAgentState(index).getPosition()
                     for action in Actions._directions.keys():
                         new_pos = Actions.getSuccessor(position, action)
                         if new_pos == my_pos:
                             ghost_kill_directions.append(action)
+                            isSafe = False  # 如果敌人可以直接移动到Pacman的位置，则标记为不安全
                             break
 
-                # update state:
                 for enemy_index, direction in zip(adjacent_ghost_indexs, ghost_kill_directions):
                     self.expanded += 1
-                    next_game_state = next_game_state.generateSuccessor(
-                        enemy_index, direction)
+                    next_game_state = next_game_state.generateSuccessor(enemy_index, direction)
 
-                # make the update
-                next_game_states[i] = next_game_state
-                next_game_state.data.scoreChange
-                # if they are next to pacman, move ghost to pacman possiton
-
-        successors = [((uniform_agent_direction(next_game_state),), action, 1)
-                      for action, next_game_state in zip(actions, next_game_states)]
+            # 在后继状态中添加isSafe标记
+            successors.append(((uniform_agent_direction(next_game_state), isSafe), action, 1))
 
         return successors
+
 
 
 # helpers
@@ -267,6 +237,8 @@ def offensiveHeuristic(state, problem=None):
     captureAgent = problem.captureAgent
     index = captureAgent.index
     gameState = state[0]
+    isSafe = state[-1]
+    # print(isSafe)
     # if getCapsule(captureAgent, gameState)[0] is not None:
     #     capsuleLocation = getCapsule(captureAgent, gameState)[0]
 
@@ -278,6 +250,9 @@ def offensiveHeuristic(state, problem=None):
     else:
         if gameState.data.scoreChange <= - problem.MINIMUM_IMPROVEMENT:
             return 0
+    # check issafe state
+    if not isSafe:
+        return float('inf')
 
     # continue with normal logc
 
