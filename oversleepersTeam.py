@@ -378,6 +378,10 @@ class OffensiveAgent(DummyAgent):
             myPos = successor.getAgentState(self.index).getPosition()
             distance_to_home = self.getMazeDistance(myPos, gameState.getInitialAgentPosition(self.index))
             features['distanceToHome'] = distance_to_home
+        # if carrying too much score, then get close to home
+        if successor.getAgentState(self.index).numCarrying > 6:
+        # compute the distance to the start point
+            features['distanceToHomeCarryingOverSix'] = self.getMazeDistance(current_pos, gameState.getInitialAgentPosition(self.index))
         successor = self.getSuccessor(gameState, action)
         foodList = self.getFood(successor).asList()    
         features['successorScore'] = -len(foodList)#self.getScore(successor)
@@ -394,7 +398,7 @@ class OffensiveAgent(DummyAgent):
         return features 
 
     def getWeights(self, gameState, action):
-        return {'onOffense': 1000, 'successorScore': 1000, 'distanceToFood': -50, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 10, 'distanceToHome': -10, 'enemyScaredTime': 1000, 'scaredEnemyDistance': -100}
+        return {'onOffense': 1000, 'successorScore': 1000, 'distanceToFood': -50, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 10, 'distanceToHome': -10, 'enemyScaredTime': 1000, 'scaredEnemyDistance': -100, 'distanceToHomeCarryingOverSix': -1000}
     
     def evaluate (self, gameState, action):
         current_pos = gameState.getAgentPosition(self.index)
