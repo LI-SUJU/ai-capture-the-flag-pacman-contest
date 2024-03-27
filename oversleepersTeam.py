@@ -362,7 +362,6 @@ class OffensiveAgent(DummyAgent):
             # keep a distance from defenders
             if(minDistance < 10) and all(enemy.scaredTimer == 0 for enemy in defenders):    
                 features['invaderDistance'] = minDistance
-
         if action == Directions.STOP: features['stop'] = 1
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
@@ -375,15 +374,19 @@ class OffensiveAgent(DummyAgent):
             myPos = successor.getAgentState(self.index).getPosition()
             minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
             features['distanceToFood'] = minDistance
-    
+        if len(foodList) == 0:
+            myPos = successor.getAgentState(self.index).getPosition()
+            distance_to_home = self.getMazeDistance(myPos, gameState.getInitialAgentPosition(self.index))
+            features['distanceToHome'] = distance_to_home
         successor = self.getSuccessor(gameState, action)
         foodList = self.getFood(successor).asList()    
         features['successorScore'] = -len(foodList)#self.getScore(successor)
+        features['enemyScaredTime'] = sum([enemy.scaredTimer for enemy in invaders])
         
         return features 
 
     def getWeights(self, gameState, action):
-        return {'onOffense': 1000, 'successorScore': 1000, 'distanceToFood': -50, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 100}
+        return {'onOffense': 1000, 'successorScore': 1000, 'distanceToFood': -50, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 10, 'distanceToHome': -10, 'enemyScaredTime': 1000}
     
     def evaluate (self, gameState, action):
         current_pos = gameState.getAgentPosition(self.index)
@@ -456,7 +459,9 @@ class DefensiveAgent(DummyAgent):
         if len(invaders) > 0 and all(enemy.scaredTimer == 0 for enemy in invaders):
             dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
             features['invaderDistance'] = min(dists)
-
+        # sum up enemy scared time
+        
+        features['enemyScaredTime'] = sum([enemy.scaredTimer for enemy in invaders])
         if action == Directions.STOP: features['stop'] = 1
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
@@ -476,5 +481,5 @@ class DefensiveAgent(DummyAgent):
 
     def getWeights(self, gameState, action):
         # TODO adjust reward policy
-        return {'numInvaders': -1000, 'onDefense': 1000, 'invaderDistance': -50, 'stop': -100, 'reverse': -2, 'distance': -2, 'foodDefendingScore': 10, 'distanceToFood': -1}
+        return {'numInvaders': -1000, 'onDefense': 1000, 'invaderDistance': -50, 'stop': -100, 'reverse': -2, 'distance': -2, 'foodDefendingScore': 10, 'distanceToFood': -1, 'enemyScaredTime': 1000}
   
