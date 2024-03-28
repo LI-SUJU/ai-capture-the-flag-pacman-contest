@@ -809,6 +809,8 @@ def readCommand( argv ):
                     help=default('How many episodes are training (suppresses output)'), default=0)
   parser.add_option('-c', '--catchExceptions', action='store_true', default=False,
                     help='Catch exceptions and enforce time limits')
+  # add play nums
+  parser.add_option('--playNum', type='int', default=1)
 
   options, otherjunk = parser.parse_args(argv)
   assert len(otherjunk) == 0, "Unrecognized options: " + str(otherjunk)
@@ -897,8 +899,6 @@ def readCommand( argv ):
   args['numTraining'] = options.numTraining
   args['record'] = options.record
   args['catchExceptions'] = options.catchExceptions
-  args['blueTeamName'] = options.blue
-  args['redTeamName'] = options.red
   return args
 
 def randomLayout(seed = None):
@@ -998,7 +998,7 @@ def runGames( layouts, agents, display, length, numGames, record, numTraining, r
       #f.close()
       print("recorded")
       g.record = pickle.dumps(components)
-      with open('replay-%d'%i,'wb', encoding='utf-8') as f:
+      with open('replay-%d'%i,'wb') as f:
         f.write(g.record)
 
   if numGames > 1:
@@ -1012,37 +1012,9 @@ def runGames( layouts, agents, display, length, numGames, record, numTraining, r
     print('Record:       ', ', '.join([('Blue', 'Tie', 'Red')[max(0, min(2, 1 + s))] for s in scores]))
   return games
 
-def save_score(games, redTeamName, blueTeamName):
-    
-    import os
-    # define a file name with red team name, blue team name, and the time
-    fname = '%svs%s' % (redTeamName, blueTeamName)
-    #open a folder call plots and then open the file
-        # Create the "plots" folder if it doesn't exist
-    if not os.path.exists("data4plots"):
-        os.makedirs("data4plots")
-
-        # Open the file in the "plots" folder
-    with open(os.path.join("data4plots", fname), 'w') as f:
-        for game in games:
-            print(game.state.data.score, file=f)
-def plot_score(games):
-    import matplotlib.pyplot as plt
-    from matplotlib.pyplot import MultipleLocator
-    x = range(len(games))
-    y = [game.state.data.score for game in games]
-    # the x-axis should be integers from 0 to len(games)
-    # the y-axis should be the score of each game
-    x_major_locator = MultipleLocator(1)
-    ax = plt.gca()
-    ax.xaxis.set_major_locator(x_major_locator)
-    y_major_locator = MultipleLocator(1)
-    ax.yaxis.set_major_locator(y_major_locator)
-    plt.plot(x, y)
-    plt.xlabel('Game')
-    plt.ylabel('Score')
-    plt.title('Score of each game')
-    plt.show()
+def save_score(game):
+    with open('score', 'a') as f:
+        print(game.state.data.score,file=f)
 
 if __name__ == '__main__':
   """
@@ -1058,8 +1030,6 @@ if __name__ == '__main__':
   options = readCommand( sys.argv[1:] ) # Get game components based on input
   games = runGames(**options)
 
-  print('options:', options)
-  save_score(games, options['redTeamName'], options['blueTeamName'])
-  # plot_score(games)
+  save_score(games[0])
   # import cProfile
   # cProfile.run('runGames( **options )', 'profile')

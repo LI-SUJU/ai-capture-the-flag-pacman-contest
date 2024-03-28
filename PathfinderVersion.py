@@ -1,4 +1,4 @@
-# myTeam.py
+# oversleepersTeam.py
 # ---------
 # Licensing Information:  You are free to use or extend these projects for
 # educational purposes provided that (1) you do not distribute or publish
@@ -113,10 +113,10 @@ class DummyAgent(CaptureAgent):
         return [(x, y) for (x, y) in border_line if (x, y) not in walls]
 
 
-EXPLORE_RATE = 1.2
+EXPLORE_RATE = 2.0
 MAX_INTERATIONS = 10
 MAX_SIMULATE_STEPS = 0
-MAX_DEPTH = 2
+MAX_DEPTH = 1
 
 class MCTS:
     def __init__(self, gameState, agent, evaluateFun, action, current_node = None):
@@ -321,7 +321,9 @@ class OffensiveAgent(DummyAgent):
         self.MCTS_tree = None
         self.arena_width = gameState.data.layout.width
         self.arena_height = gameState.data.layout.height
-        DummyAgent.registerInitialState(self, gameState)
+        DummyAgent.registerInitialState(self, gameState)        
+        self.friendly_borders = self.detect_my_border(gameState)
+        self.hostile_borders = self.detect_enemy_border(gameState)
         
     def getSuccessor(self, gameState, action):
         """
@@ -336,10 +338,23 @@ class OffensiveAgent(DummyAgent):
             return successor
     
     def chooseAction(self, gameState):
-        if self.MCTS_tree is None:
-            self.MCTS_tree = MCTS(gameState, self, self.evaluate, None,  None)
+
+        actions = gameState.getLegalActions(self.index)
+        agent_state = gameState.getAgentState(self.index)
+
+        carrying = agent_state.numCarrying
+        isPacman = agent_state.isPacman
+        
+        if isPacman:
+            if self.MCTS_tree is None:
+                self.MCTS_tree = MCTS(gameState, self, self.evaluate_off, None,  None)
+            else:
+                self.MCTS_tree.update_root(gameState)
         else:
-            self.MCTS_tree.update_root(gameState)
+            if self.MCTS_tree is None:
+                self.MCTS_tree = MCTS(gameState, self, self.evaluate_def, None,  None)
+            else:
+                self.MCTS_tree.update_root(gameState)
         return self.MCTS_tree.perform()
     
     def getFeatures(self, gameState, action):
@@ -348,13 +363,10 @@ class OffensiveAgent(DummyAgent):
 
         myState = successor.getAgentState(self.index)
         myPos = myState.getPosition()
-        
-        foodLeft = len(self.getFood(gameState).asList())
 
         # Computes whether we're on defense (1) or offense (0)
-        if foodLeft > 2:
-            features['onOffense'] = 0
-            if myState.isPacman: features['onOffense'] = 1
+        features['onOffense'] = 0
+        if myState.isPacman: features['onOffense'] = 1
 
         # Computes distance to invaders we can see
         enemies = [successor.getAgentState(i) for i in self.getOpponents(successor)]
@@ -363,10 +375,8 @@ class OffensiveAgent(DummyAgent):
             dists = [self.getMazeDistance(myPos, a.getPosition()) for a in defenders]
             minDistance = min(dists)
             # keep a distance from defenders
-            if (minDistance < 5) and any((enemy.scaredTimer == 0 and not enemy.isPacman) for enemy in defenders):    
+            if(minDistance < 10) and all(enemy.scaredTimer == 0 for enemy in defenders):    
                 features['invaderDistance'] = minDistance
-                features['safe'] = 1
-
         if action == Directions.STOP: features['stop'] = 1
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
@@ -379,12 +389,11 @@ class OffensiveAgent(DummyAgent):
             myPos = successor.getAgentState(self.index).getPosition()
             minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
             features['distanceToFood'] = minDistance
-    
-        successor = self.getSuccessor(gameState, action)
-        foodList = self.getFood(successor).asList()    
-        features['successorScore'] = -len(foodList)#self.getScore(successor)
-        
-                # compute the num carrying
+        if len(foodList) == 0:
+            myPos = successor.getAgentState(self.index).getPosition()
+            distance_to_home = self.getMazeDistance(myPos, gameState.getInitialAgentPosition(self.index))
+            features['distanceToHome'] = distance_to_home
+        # compute the num carrying
         features['numCarrying'] = successor.getAgentState(self.index).numCarrying
             
         # if carrying too much score, then get close to home
@@ -402,10 +411,18 @@ class OffensiveAgent(DummyAgent):
             dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
             minDistance = min(dists)
             features['scaredEnemyDistance'] = minDistance
+
+        # compute the distance to the nearest capsule
+        capsules = self.getCapsules(successor)
+        if capsules:
+            capsule_distances = [self.getMazeDistance(myPos, capsule) for capsule in capsules]
+            nearest_capsule_distance = min(capsule_distances)
+            features['nearestCapsuleDistance'] = nearest_capsule_distance
+        
         return features 
 
     def getWeights(self, gameState, action):
-        return {'safe': 1000, 'onOffense': 1, 'successorScore': 100, 'distanceToFood': -10, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 100, 'numCarrying': 10, 'distanceToHomeCarryingTooMuch': -10, 'enemyScaredTime': 100, 'scaredEnemyDistance': -1000}
+        return {'onOffense': 1000, 'successorScore': 1000, 'distanceToFood': -50, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 100, 'distanceToHome': -100, 'enemyScaredTime': 100, 'scaredEnemyDistance': -100, 'distanceToHomeCarryingTooMuch': -100, 'numCarrying': 10, 'nearestCapsuleDistance': -100}
     
     def evaluate (self, gameState, action):
         current_pos = gameState.getAgentPosition(self.index)
@@ -415,7 +432,121 @@ class OffensiveAgent(DummyAgent):
         weights = self.getWeights(gameState, action)
         return features * weights
     
+    def detect_my_border(self, gameState):
+        """
+        Return borders position
+        """
+        walls = gameState.getWalls().asList()
+        if self.red:
+            border_x = self.arena_width // 2 - 1
+        else:
+            border_x = self.arena_width // 2
+        border_line = [(border_x, h) for h in range(self.arena_height)]
+        return [(x, y) for (x, y) in border_line if (x, y) not in walls and (x + 1 - 2*self.red, y) not in walls]
 
+    def detect_enemy_border(self, gameState):
+        """
+        Return borders position
+        """
+        walls = gameState.getWalls().asList()
+        if self.red:
+            border_x = self.arena_width // 2
+        else:
+            border_x = self.arena_width // 2 - 1
+        border_line = [(border_x, h) for h in range(self.arena_height)]
+        return [(x, y) for (x, y) in border_line if (x, y) not in walls and (x + 1 - 2*self.red, y) not in walls]
+
+    def detect_enemy_ghost(self, gameState):
+        """
+        Return Observable Oppo-Ghost Index
+        """
+        enemyList = []
+        for enemy in self.getOpponents(gameState):
+            enemyState = gameState.getAgentState(enemy)
+            if (not enemyState.isPacman) and enemyState.scaredTimer == 0:
+                enemyPos = gameState.getAgentPosition(enemy)
+                if enemyPos != None:
+                    enemyList.append(enemy)
+        return enemyList
+
+    def detect_enemy_approaching(self, gameState):
+        """
+        Return Observable Oppo-Ghost Position Within 5 Steps
+        """
+        dangerGhosts = []
+        ghosts = self.detect_enemy_ghost(gameState)
+        myPos = gameState.getAgentPosition(self.index)
+        for g in ghosts:
+            distance = self.getMazeDistance(myPos, gameState.getAgentPosition(g))
+            if distance <= 5:
+                dangerGhosts.append(g)
+        return dangerGhosts
+
+    def evaluate_off(self, gameState, action):
+        """
+        Computes a linear combination of features and feature weights
+        """
+        features = self.get_off_features(gameState, action)
+        weights = self.get_off_weights(gameState, action)
+        return features * weights
+
+    def get_off_features(self, gameState, action):
+        """
+        Returns a counter of features for the state
+        """
+        features = util.Counter()
+        next_tate = self.get_next_state(gameState, action)
+        if next_tate.getAgentState(self.index).numCarrying > gameState.getAgentState(self.index).numCarrying:
+            features['getFood'] = 1
+        else:
+            if len(self.getFood(next_tate).asList()) > 0:
+                features['minDistToFood'] = self.get_min_dist_to_food(next_tate)
+        return features
+
+    def get_off_weights(self, gameState, action):
+        """
+        Normally, weights do not depend on the gamestate.  They can be either
+        a counter or a dictionary.
+        """
+        return {'minDistToFood': -1, 'getFood': 100}
+
+    def evaluate_def(self, gameState, action):
+        """
+        Computes a linear combination of features and feature weights
+        """
+        features = self.get_def_features(gameState, action)
+        weights = self.get_def_weights(gameState, action)
+        return features * weights
+
+    def get_def_features(self, gameState, action):
+        """
+        Returns a counter of features for the state
+        """
+        features = util.Counter()
+        successor = self.get_next_state(gameState, action)
+        foodList = self.getFood(successor).asList()
+        features['successorScore'] = -len(foodList)  # self.getScore(successor)
+
+        if len(foodList) > 0:  # This should always be True,  but better safe than sorry
+            current_pos = successor.getAgentState(self.index).getPosition()
+            min_distance = min([self.getMazeDistance(current_pos, food) for food in foodList])
+            features['distanceToFood'] = min_distance
+        return features
+
+    def get_def_weights(self, gameState, action):
+
+        return {'successorScore': 100, 'distanceToFood': -1}
+
+    def get_next_state(self, gameState, action):
+        """
+        Finds the next successor which is a grid position (location tuple).
+        """
+        successor = gameState.generateSuccessor(self.index, action)
+        return successor
+
+    def get_min_dist_to_food(self, gameState):
+        myPos = gameState.getAgentPosition(self.index)
+        return min([self.getMazeDistance(myPos, f) for f in self.getFood(gameState).asList()])
 ####################
 #  DefensiveAgent  #
 ####################
@@ -478,7 +609,9 @@ class DefensiveAgent(DummyAgent):
         if len(invaders) > 0 and all(enemy.scaredTimer == 0 for enemy in invaders):
             dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
             features['invaderDistance'] = min(dists)
-
+        # sum up enemy scared time
+        
+        features['enemyScaredTime'] = sum([enemy.scaredTimer for enemy in invaders])
         if action == Directions.STOP: features['stop'] = 1
         rev = Directions.REVERSE[gameState.getAgentState(self.index).configuration.direction]
         if action == rev: features['reverse'] = 1
@@ -493,10 +626,16 @@ class DefensiveAgent(DummyAgent):
             myPos = successor.getAgentState(self.index).getPosition()
             minDistance = min([self.getMazeDistance(myPos, food) for food in foodList])
             features['distanceToFood'] = minDistance
+        # get closed to scared enemy
+        if len(invaders) > 0 and any(enemy.scaredTimer > 0 for enemy in invaders):
+            # compute the distance to the scared enemy
+            dists = [self.getMazeDistance(myPos, a.getPosition()) for a in invaders]
+            minDistance = min(dists)
+            features['scaredEnemyDistance'] = minDistance
         
         return features 
 
     def getWeights(self, gameState, action):
         # TODO adjust reward policy
-        return {'numInvaders': -1000, 'onDefense': 1000, 'invaderDistance': -50, 'stop': -100, 'reverse': -2, 'distance': -2, 'foodDefendingScore': 10, 'distanceToFood': -1}
+        return {'numInvaders': -1000, 'onDefense': 1000, 'invaderDistance': -50, 'stop': -100, 'reverse': -2, 'distance': -2, 'foodDefendingScore': 10, 'distanceToFood': -1, 'enemyScaredTime': 1000, 'scaredEnemyDistance': -100}
   
