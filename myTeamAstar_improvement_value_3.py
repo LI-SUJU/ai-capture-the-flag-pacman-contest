@@ -140,7 +140,7 @@ class FoodOffenseWithAgentAwareness():
         self.startingGameState = uniform_agent_direction(startingGameState)
         # Need to ignore previous score change, as everything should be considered relative to this state
         self.startingGameState.data.scoreChange = 0
-        self.MINIMUM_IMPROVEMENT = 2
+        self.MINIMUM_IMPROVEMENT = 3
         self.DEPTH_CUTOFF = 1
         # WARNING: Capture agent doesn't update with new state, this should only be used for non state dependant utils (e.g distancer)
         self.captureAgent: CaptureAgent = captureAgent
