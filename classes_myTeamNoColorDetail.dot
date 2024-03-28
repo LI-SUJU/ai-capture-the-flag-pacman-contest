@@ -1,0 +1,5 @@
+digraph "classes_myTeamNoColorDetail" {
+rankdir=LR
+charset="utf-8"
+"myTeam.DummyAgent" [color="black", fontcolor="black", label=<{DummyAgent|arena_height<br ALIGN="LEFT"/>arena_width<br ALIGN="LEFT"/>center_line<br ALIGN="LEFT"/>|chooseAction(gameState)<br ALIGN="LEFT"/>compute_center_line(gameState)<br ALIGN="LEFT"/>registerInitialState(gameState)<br ALIGN="LEFT"/>}>, shape="record", style="solid"];
+}

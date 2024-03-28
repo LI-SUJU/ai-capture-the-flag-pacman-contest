@@ -405,7 +405,7 @@ class OffensiveAgent(DummyAgent):
         return features 
 
     def getWeights(self, gameState, action):
-        return {'safe': 1000, 'onOffense': 1, 'successorScore': 100, 'distanceToFood': -10, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 100, 'numCarrying': 10, 'distanceToHomeCarryingTooMuch': -10, 'enemyScaredTime': 100, 'scaredEnemyDistance': -1000}
+        return {'safe': 1000, 'onOffense': 1000, 'successorScore': 100, 'distanceToFood': -10, 'distance': -10, 'stop': -100, 'reverse': -2, 'invaderDistance': 100, 'numCarrying': 10, 'distanceToHomeCarryingTooMuch': -10, 'enemyScaredTime': 100, 'scaredEnemyDistance': -1000}
     
     def evaluate (self, gameState, action):
         current_pos = gameState.getAgentPosition(self.index)

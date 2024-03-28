@@ -1,0 +1,14 @@
+digraph "classes_myTeamNoColor" {
+rankdir=LR
+charset="utf-8"
+"myTeam.DefensiveAgent" [color="black", fontcolor="black", label=<DefensiveAgent>, shape="record", style="solid"];
+"myTeam.DummyAgent" [color="black", fontcolor="black", label=<DummyAgent>, shape="record", style="solid"];
+"myTeam.MCTS" [color="black", fontcolor="black", label=<MCTS>, shape="record", style="solid"];
+"myTeam.MCTSNode" [color="black", fontcolor="black", label=<MCTSNode>, shape="record", style="solid"];
+"myTeam.OffensiveAgent" [color="black", fontcolor="black", label=<OffensiveAgent>, shape="record", style="solid"];
+"myTeam.DefensiveAgent" -> "myTeam.DummyAgent" [arrowhead="empty", arrowtail="none"];
+"myTeam.OffensiveAgent" -> "myTeam.DummyAgent" [arrowhead="empty", arrowtail="none"];
+"myTeam.MCTS" -> "myTeam.DefensiveAgent" [arrowhead="diamond", arrowtail="none", fontcolor="green", label="MCTS_tree", style="solid"];
+"myTeam.MCTS" -> "myTeam.OffensiveAgent" [arrowhead="diamond", arrowtail="none", fontcolor="green", label="MCTS_tree", style="solid"];
+"myTeam.MCTSNode" -> "myTeam.MCTS" [arrowhead="diamond", arrowtail="none", fontcolor="green", label="root", style="solid"];
+}
