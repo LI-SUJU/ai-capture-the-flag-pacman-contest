@@ -140,7 +140,7 @@ class FoodOffenseWithAgentAwareness():
         self.startingGameState = uniform_agent_direction(startingGameState)
         # Need to ignore previous score change, as everything should be considered relative to this state
         self.startingGameState.data.scoreChange = 0
-        self.MINIMUM_IMPROVEMENT = 2
+        self.MINIMUM_IMPROVEMENT = 3
         self.DEPTH_CUTOFF = 1
         # WARNING: Capture agent doesn't update with new state, this should only be used for non state dependant utils (e.g distancer)
         self.captureAgent: CaptureAgent = captureAgent
@@ -148,7 +148,7 @@ class FoodOffenseWithAgentAwareness():
 
     def getStartState(self):
         # This needs to return the state information to being with
-        return (self.startingGameState, self.startingGameState.getScore())
+        return (self.startingGameState, self.startingGameState.getScore(), True)
 
     def isGoalState(self, state: t.Tuple[GameState]) -> bool:
         # Goal state when:
@@ -174,81 +174,50 @@ class FoodOffenseWithAgentAwareness():
             else:
                 False
 
-    def getSuccessors(self, state: t.Tuple[GameState], node_info: t.Optional[dict] = None) -> t.List[t.Tuple[t.Tuple[GameState], Directions, int]]:
-        """
-        Your getSuccessors function for the CapsuleSearchProblem goes here.
-        Args:
-          state: a tuple combineing all the state information required
-        Return:
-          the states accessable by expanding the state provide
-        """
-        # TODO: it looks like gameState does not know the behaviour of when to end the game
-        # - gameState.data.timeleft records the total number of turns left in the game (each time a player nodes turn decreases, so should decriment by 4)
-        # - capture.CaptureRule.process handles actually ending the game, using 'game' and 'gameState' object
+    def getSuccessors(self, state: t.Tuple[GameState], node_info: t.Optional[dict] = None) -> t.List[t.Tuple[t.Tuple[GameState, bool], Directions, int]]:
         gameState = state[0]
 
-        actions: t.List[Directions] = gameState.getLegalActions(
-            self.captureAgent.index)
-        # not interested in exploring the stop action as the state will be the same as out current one.
+        actions = gameState.getLegalActions(self.captureAgent.index)
         if Directions.STOP in actions:
             actions.remove(Directions.STOP)
-        next_game_states = [gameState.generateSuccessor(
-            self.captureAgent.index, action) for action in actions]
+        next_game_states = [gameState.generateSuccessor(self.captureAgent.index, action) for action in actions]
 
-        # if planning close to agent, include expected ghost activity
-        current_depth_of_search = len(node_info["action_from_init"])
-        # we are only concerned about being eaten when we are pacman
-        # only care about the enemy positon when distance is shorter than DEPTH_CUTOFF
-        if current_depth_of_search <= self.DEPTH_CUTOFF and gameState.getAgentState(self.captureAgent.index).isPacman:
-            self.expanded += 1  # track number of states expanded
+        successors = []
+        for action, next_game_state in zip(actions, next_game_states):
+            isSafe = True  
 
-            # make any nearby enemy ghosts take a step toward you if legal
-            for i, next_game_state in enumerate(next_game_states):
-                # get enemys
+            current_depth_of_search = len(node_info["action_from_init"])
+            if current_depth_of_search <= self.DEPTH_CUTOFF and gameState.getAgentState(self.captureAgent.index).isPacman:
+                self.expanded += 1
+
                 current_agent_index = self.captureAgent.index
-                enemy_indexes = next_game_state.getBlueTeamIndices() if next_game_state.isOnRedTeam(
-                    current_agent_index) else next_game_state.getRedTeamIndices()
+                enemy_indexes = next_game_state.getBlueTeamIndices() if next_game_state.isOnRedTeam(current_agent_index) else next_game_state.getRedTeamIndices()
 
-                # keep only enemies that are close enough to catch pacman.
-                close_enemy_indexes = [
-                    enemy_index for enemy_index in enemy_indexes if next_game_state.getAgentPosition(enemy_index) is not None]
+                close_enemy_indexes = [enemy_index for enemy_index in enemy_indexes if next_game_state.getAgentPosition(enemy_index) is not None]
                 distancer = self.captureAgent.distancer
-                my_pos = next_game_state.getAgentState(
-                    current_agent_index).getPosition()
-                # important the distance should be set to 1 because we only simulate one more action 
-                adjacent_enemy_indexs = list(filter(lambda x: distancer.getDistance(
-                    my_pos, next_game_state.getAgentState(x).getPosition()) <= 1, close_enemy_indexes))
+                my_pos = next_game_state.getAgentState(current_agent_index).getPosition()
+                adjacent_enemy_indexs = list(filter(lambda x: distancer.getDistance(my_pos, next_game_state.getAgentState(x).getPosition()) <= 1, close_enemy_indexes))
 
-                # check in enemies are in the right state
-                adjacent_ghost_indexs = list(filter(lambda x: (not next_game_state.getAgentState(
-                    x).isPacman) and (next_game_state.getAgentState(x).scaredTimer <= 0), adjacent_enemy_indexs))
+                adjacent_ghost_indexs = list(filter(lambda x: (not next_game_state.getAgentState(x).isPacman) and (next_game_state.getAgentState(x).scaredTimer <= 0), adjacent_enemy_indexs))
 
-                # move enemies to the pacman position
                 ghost_kill_directions = []
                 for index in adjacent_ghost_indexs:
-                    position = next_game_state.getAgentState(
-                        index).getPosition()
+                    position = next_game_state.getAgentState(index).getPosition()
                     for action in Actions._directions.keys():
                         new_pos = Actions.getSuccessor(position, action)
                         if new_pos == my_pos:
                             ghost_kill_directions.append(action)
+                            isSafe = False 
                             break
 
-                # update state:
                 for enemy_index, direction in zip(adjacent_ghost_indexs, ghost_kill_directions):
                     self.expanded += 1
-                    next_game_state = next_game_state.generateSuccessor(
-                        enemy_index, direction)
+                    next_game_state = next_game_state.generateSuccessor(enemy_index, direction)
 
-                # make the update
-                next_game_states[i] = next_game_state
-                next_game_state.data.scoreChange
-                # if they are next to pacman, move ghost to pacman possiton
-
-        successors = [((uniform_agent_direction(next_game_state),), action, 1)
-                      for action, next_game_state in zip(actions, next_game_states)]
+            successors.append(((uniform_agent_direction(next_game_state), isSafe), action, 1))
 
         return successors
+
 
 
 # helpers
@@ -260,13 +229,11 @@ direction_map = {Directions.NORTH: (0, 1),
 
 
 def offensiveHeuristic(state, problem=None):
-    """
-    A heuristic function estimates the cost from the current state to the nearest
-    goal in the provided SearchProblem.  
-    """
     captureAgent = problem.captureAgent
     index = captureAgent.index
     gameState = state[0]
+    isSafe = state[-1]
+    # print(isSafe)
     # if getCapsule(captureAgent, gameState)[0] is not None:
     #     capsuleLocation = getCapsule(captureAgent, gameState)[0]
 
@@ -278,8 +245,9 @@ def offensiveHeuristic(state, problem=None):
     else:
         if gameState.data.scoreChange <= - problem.MINIMUM_IMPROVEMENT:
             return 0
-
-    # continue with normal logc
+    # check issafe state
+    if not isSafe:
+        return float('inf')
 
     agent_state = gameState.getAgentState(index)
     food_carrying = agent_state.numCarrying
@@ -369,9 +337,6 @@ class defensiveAgent(agentBase):
 
         problem = defendTerritoryProblem(
             startingGameState=gameState, captureAgent=self)
-
-        # actions = search.breadthFirstSearch(problem)
-        # actions = aStarSearch(problem, heuristic=defensiveHeuristic)
         actions = aStarSearchDefensive(problem, heuristic=defensiveHeuristic)
         if len(actions) != 0:
             return actions[0]
@@ -573,16 +538,10 @@ class defendTerritoryProblem():
         return successors
 
     def getCostOfActions(self, actions):
-        """Returns the cost of a particular sequence of actions.  If those actions
-        include an illegal move, return 999999"""
         util.raiseNotDefined()
 
 
 def defensiveHeuristic(state, problem=None):
-    """
-    A heuristic function estimates the cost from the current state to the nearest
-    goal in the provided SearchProblem.  This heuristic is trivial.
-    """
     gameState = state[0]
     currGoalDistance = state[1]
 
@@ -598,8 +557,6 @@ def defensiveHeuristic(state, problem=None):
 
 class TimeoutException(Exception):
     pass
-
-# TODO: this only runs in Unix environment (the competition is unix). If developing on windows can update this.
 
 
 # @contextmanager
@@ -683,7 +640,6 @@ def aStarSearch(problem, heuristic=nullHeuristic):
         count = 1
         node = op.pop()
         if (node.state not in close) or (node.g_n < best_g[node.state]):
-            # very useful debugging info - will be left for future users
             # total_expanded += 1
             # print("------------")
             # # print(node.state[0])
