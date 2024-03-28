@@ -1016,7 +1016,7 @@ def save_score(games, redTeamName, blueTeamName):
     
     import os
     # define a file name with red team name, blue team name, and the time
-    fname = '%svs%s' % (redTeamName, blueTeamName)
+    fname = '%sVS%s' % (redTeamName, blueTeamName)
     #open a folder call plots and then open the file
         # Create the "plots" folder if it doesn't exist
     if not os.path.exists("data4plots"):
